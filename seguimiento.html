@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peluche - Seguimiento de Trayecto en Vivo</title>
+<style>
+:root {
+    --bg-main: #111827;
+    --card-bg: #ffffff;
+    --text-main: #111827;
+    --text-muted: #6b7280;
+    --border-color: #e5e7eb;
+    --accent-blue: #2563eb;
+    --success: #10b981;
+}
+body { background: var(--bg-main); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+header { background: #111827; color: white; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 10; }
+h1 { margin: 0; font-size: 18px; font-weight: 700; }
+
+#map-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+#map-container iframe { width: 100%; height: 100%; border: none; }
+
+.uber-floating-card {
+    position: fixed;
+    bottom: 20px;
+    left: 15px;
+    right: 15px;
+    background: var(--card-bg);
+    border-radius: 24px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    z-index: 10;
+    border: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+
+.badge-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+.badge-black { background: #111827; color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.badge-exclusive { background: #eff6ff; color: #1d4ed8; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+
+.status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #374151; color: #e5e7eb; }
+.gps-info { font-size: 12px; color: var(--accent-blue); margin-top: 4px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Peluche <span style="font-weight:300; opacity:0.8;">En Vivo</span></h1>
+  <div id="tripStatus" class="status-pill">● Conectando...</div>
+</header>
+
+<div id="map-container">
+  <iframe id="mapaIframe" src="about:blank" allowfullscreen></iframe>
+</div>
+
+<div class="uber-floating-card">
+  <div class="badge-row">
+    <span class="badge-black">Peluche Black</span>
+    <span id="badgeEstado" class="badge-exclusive">Buscando conductor</span>
+  </div>
+  <div style="font-size: 18px; font-weight: 700; color: #111827; margin: 8px 0;" id="tituloEstado">Buscando conductor asignado...</div>
+  <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 6px;" id="detallesConductor">Esperando asignación de vehículo.</div>
+  <div id="gpsContainer" class="gps-info"></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB5w7bXhTbBERcQ0TI6hRwOHA4gwXYV7yo",
+    authDomain: "peluche-dda78.firebaseapp.com",
+    projectId: "peluche-dda78",
+    storageBucket: "peluche-dda78.firebasestorage.app",
+    messagingSenderId: "673425111065",
+    appId: "1:673425111065:web:3f4c9e2ca6dfe10cdc1288"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const urlParams = new URLSearchParams(window.location.search);
+  let viajeId = urlParams.get('id');
+
+  if (!viajeId) {
+    document.getElementById('tituloEstado').innerText = "Enlace inválido";
+    document.getElementById('detallesConductor').innerText = "No se encontró el ID de seguimiento en la URL.";
+    document.getElementById('tripStatus').innerText = "● Error";
+  } else {
+    rastrearTrayectoConductor(viajeId);
+  }
+
+  function rastrearTrayectoConductor(id) {
+    const docRef = doc(db, "viajes", id);
+    
+    // Escucha en tiempo real optimizada exclusivamente para este viaje
+    onSnapshot(docRef, (docSnap) => {
+      if (!docSnap.exists()) {
+        document.getElementById('tituloEstado').innerText = "Viaje no encontrado o expirado";
+        document.getElementById('tripStatus').innerText = "● Finalizado";
+        return;
+      }
+
+      let v = docSnap.data();
+      let statusPill = document.getElementById('tripStatus');
+      let badgeEstado = document.getElementById('badgeEstado');
+      let tituloEstado = document.getElementById('tituloEstado');
+      let detallesConductor = document.getElementById('detallesConductor');
+      let gpsContainer = document.getElementById('gpsContainer');
+      let mapaIframe = document.getElementById('mapaIframe');
+
+      if (v.estado === 'BUSCANDO') {
+        statusPill.innerText = "● Buscando";
+        statusPill.style.background = "#d97706";
+        badgeEstado.innerText = "Buscando conductor";
+        tituloEstado.innerText = "Buscando unidad cercana...";
+        detallesConductor.innerText = `Punto de recogida: ${v.origenTexto}`;
+        gpsContainer.innerHTML = "";
+        mapaIframe.src = `https://maps.google.com/maps?q=${v.latOrigen || '19.4326'},${v.lngOrigen || '-99.1332'}&z=15&output=embed`;
+      } 
+      else if (v.estado === 'EN_CURSO') {
+        statusPill.innerText = "● En Ruta";
+        statusPill.style.background = "#064e3b";
+        statusPill.style.color = "#34d399";
+        badgeEstado.innerText = "✓ Conductor en camino";
+        tituloEstado.innerText = v.driverNombre ? `Conductor: ${v.driverNombre}` : "Conductor en camino";
+        detallesConductor.innerHTML = `📞 Teléfono: ${v.driverTelefono || 'Disponible en breve'}`;
+
+        if (v.latDriver && v.lngDriver) {
+          gpsContainer.innerHTML = `🛰️ Actualizando posición del conductor en tiempo real...`;
+          let origenDriver = `${v.latDriver},${v.lngDriver}`;
+          let destinoRecogida = `${v.latOrigen},${v.lngOrigen}`;
+          mapaIframe.src = `https://maps.google.com/maps?saddr=${origenDriver}&daddr=${destinoRecogida}&output=embed`;
+        } else {
+          gpsContainer.innerHTML = `🛰️ Esperando señal GPS del conductor...`;
+          mapaIframe.src = `https://maps.google.com/maps?q=${v.latOrigen},${v.lngOrigen}&z=16&output=embed`;
+        }
+      } 
+      else if (v.estado === 'FINALIZADO') {
+        statusPill.innerText = "● Finalizado";
+        statusPill.style.background = "#374151";
+        badgeEstado.innerText = "Viaje Completado";
+        tituloEstado.innerText = "¡Llegaste a tu destino!";
+        detallesConductor.innerText = "Gracias por viajar con Peluche.";
+        gpsContainer.innerHTML = "";
+      }
+    }, (error) => {
+      console.error("Error de permisos o conexión:", error);
+      document.getElementById('tituloEstado').innerText = "Acceso denegado o error de red";
+    });
+  }
+</script>
+</body>
+</html>
