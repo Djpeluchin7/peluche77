@@ -1,177 +1,259 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Peluche Tracking</title>
-<style>
-:root {
-    --bg-main: #111827;
-    --card-bg: #ffffff;
-    --text-main: #111827;
-    --text-muted: #6b7280;
-    --border-color: #e5e7eb;
-    --accent-blue: #2563eb;
-    --success: #10b981;
-}
-body { background: var(--bg-main); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peluche - Seguimiento Seguro</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Tailwind CSS para componentes rápidos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background: #0f172a; color: #f8fafc; }
+        header { background: #1e293b; color: white; padding: 16px; text-align: center; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; px: 20px; }
+        header h1 { margin: 0; font-size: 18px; color: #ffffff; font-weight: bold; }
+        
+        /* Contenedor del mapa dinámico (Leaflet fluido + Iframe opcional) */
+        #mapContainer { height: calc(100vh - 230px); width: 100%; position: relative; background: #0f172a; }
+        #map { height: 100%; width: 100%; z-index: 1; }
+        #googleIframe { height: 100%; width: 100%; border: 0; display: none; position: absolute; top: 0; left: 0; z-index: 2; }
 
-header { background: #111827; color: white; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); z-index: 10; }
-h1 { margin: 0; font-size: 18px; font-weight: 700; }
+        .trip-card { background: #1e293b; padding: 18px; position: relative; z-index: 10; border-top-left-radius: 20px; border-top-right-radius: 20px; border-top: 1px solid #334155; box-shadow: 0 -10px 25px -5px rgba(0, 0, 0, 0.3); }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; }
+        .status-buscando { background: #78350f; color: #fde68a; }
+        .status-en_curso { background: #14532d; color: #4ade80; }
+        .status-finalizado { background: #374151; color: #9ca3af; }
+        
+        .driver-info { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; border-top: 1px solid #334155; padding-top: 12px; }
+        .driver-details h3 { margin: 0; font-size: 15px; color: #f8fafc; font-weight: 600; }
+        .driver-details p { margin: 2px 0 0 0; font-size: 12px; color: #94a3b8; }
+        .call-btn { background: #22c55e; color: white; padding: 8px 14px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 12px; transition: background 0.2s; }
+        .call-btn:hover { background: #16a34a; }
 
-#map-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-#map-container iframe { width: 100%; height: 100%; border: none; }
-
-.uber-floating-card {
-    position: fixed;
-    bottom: 20px;
-    left: 15px;
-    right: 15px;
-    background: var(--card-bg);
-    border-radius: 24px;
-    padding: 20px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    z-index: 10;
-    border: 1px solid var(--border-color);
-    box-sizing: border-box;
-}
-
-.badge-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
-.badge-black { background: #111827; color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-.badge-exclusive { background: #eff6ff; color: #1d4ed8; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
-
-.status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #374151; color: #e5e7eb; }
-.gps-info { font-size: 12px; color: var(--accent-blue); margin-top: 4px; font-weight: 600; }
-</style>
+        /* Botón flotante para alternar entre Leaflet y Google Maps Iframe */
+        .map-toggle-btn { position: absolute; top: 15px; right: 15px; z-index: 1000; background: rgba(30, 41, 59, 0.9); color: #cbd5e1; border: 1px solid #475569; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; backdrop-filter: blur(4px); }
+        .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #374151; color: #e5e7eb; }
+    </style>
 </head>
 <body>
 
 <header>
-  <h1>Peluche <span style="font-weight:300; opacity:0.8;">Tracking</span></h1>
-  <div id="tripStatus" class="status-pill">● Conectando...</div>
+      <h1>Peluche <span style="font-weight:300; opacity:0.8;">Live Tracking</span></h1>
+      <div id="tripStatus" class="status-pill">● Conectando...</div>
 </header>
 
-<div id="map-container">
-  <iframe id="mapaIframe" src="about:blank" allowfullscreen></iframe>
-</div>
-
-<div class="uber-floating-card">
-  <div class="badge-row">
-    <span class="badge-black">Peluche Tracking</span>
-    <span id="badgeEstado" class="badge-exclusive">Buscando conductor</span>
-  </div>
-  <div style="font-size: 18px; font-weight: 700; color: #111827; margin: 8px 0;" id="tituloEstado">Buscando conductor asignado...</div>
-  <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 6px;" id="detallesConductor">Esperando asignación de vehículo.</div>
-  <div id="gpsContainer" class="gps-info"></div>
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyB5w7bXhTbBERcQ0TI6hRwOHA4gwXYV7yo",
-    authDomain: "peluche-dda78.firebaseapp.com",
-    projectId: "peluche-dda78",
-    storageBucket: "peluche-dda78.firebasestorage.app",
-    messagingSenderId: "673425111065",
-    appId: "1:673425111065:web:3f4c9e2ca6dfe10cdc1288"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-
-  const urlParams = new URLSearchParams(window.location.search);
-  let viajeId = urlParams.get('id');
-
-  // Variables de control para evitar recargas excesivas del mapa
-  let ultimaActualizacionMapa = 0;
-  let ultimoUrlMapa = "";
-  const INTERVALO_MAPA_MS = 30000; // 30 segundos entre recargas forzadas del mapa
-
-  if (!viajeId) {
-    document.getElementById('tituloEstado').innerText = "Enlace inválido";
-    document.getElementById('detallesConductor').innerText = "No se encontró el ID de seguimiento en la URL.";
-    document.getElementById('tripStatus').innerText = "● Error";
-  } else {
-    rastrearTrayectoConductor(viajeId);
-  }
-
-  function rastrearTrayectoConductor(id) {
-    const docRef = doc(db, "viajes", id);
+<!-- Contenedor del Mapa con opción Híbrida -->
+<div id="mapContainer">
+    <!-- Botón para cambiar dinámicamente al Iframe de Google Maps -->
+    <button onclick="alternarModoMapa()" id="toggleMapBtn" class="map-toggle-btn">🗺️ Usar Google Maps</button>
     
-    onSnapshot(docRef, (docSnap) => {
-      if (!docSnap.exists()) {
-        document.getElementById('tituloEstado').innerText = "Viaje no encontrado o expirado";
-        document.getElementById('tripStatus').innerText = "● Finalizado";
-        return;
-      }
+    <!-- Mapa Leaflet principal (Fluido) -->
+    <div id="map"></div>
+    
+    <!-- Iframe de Google Maps alternativo -->
+    <iframe id="googleIframe" allowfullscreen="" loading="lazy"></iframe>
+</div>
 
-      let v = docSnap.data();
-      let statusPill = document.getElementById('tripStatus');
-      let badgeEstado = document.getElementById('badgeEstado');
-      let tituloEstado = document.getElementById('tituloEstado');
-      let detallesConductor = document.getElementById('detallesConductor');
-      let gpsContainer = document.getElementById('gpsContainer');
-      let mapaIframe = document.getElementById('mapaIframe');
+<div class="trip-card">
+      <div id="statusBadge" class="status-badge status-buscando">Cargando viaje...</div>
+      <div id="infoDestino" style="font-size: 13px; color: #94a3b8; margin-bottom: 4px;">Destino: Cargando...</div>
+      <div id="infoTarifa" style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Tarifa estimada: --</div>
 
-      // 1. Actualización inmediata de textos y estados visuales (Cero parpadeos en la interfaz)
-      if (v.estado === 'BUSCANDO') {
-        statusPill.innerText = "● Buscando";
-        statusPill.style.background = "#d97706";
-        badgeEstado.innerText = "Buscando conductor";
-        tituloEstado.innerText = "Buscando unidad cercana...";
-        detallesConductor.innerText = `Punto de recogida: ${v.origenTexto}`;
-        gpsContainer.innerHTML = "";
-        
-        actualizarMapaSiEsNecesario(`https://maps.google.com/maps?q=${v.latOrigen || '19.4326'},${v.lngOrigen || '-99.1332'}&z=15&output=embed`, mapaIframe);
-      } 
-      else if (v.estado === 'EN_CURSO') {
-        statusPill.innerText = "● En Ruta";
-        statusPill.style.background = "#064e3b";
-        statusPill.style.color = "#34d399";
-        badgeEstado.innerText = "✓ Conductor en camino";
-        tituloEstado.innerText = v.driverNombre ? `Conductor: ${v.driverNombre}` : "Conductor en camino";
-        detallesConductor.innerHTML = `📞 Teléfono: ${v.driverTelefono || 'Disponible en breve'}`;
+      <div class="driver-info">
+            <div class="driver-details">
+                  <h3 id="driverName">Asignando conductor</h3>
+                  <p id="driverPhone">Espera un momento...</p>
+            </div>
+            <div id="actionContainer"></div>
+      </div>
+</div>
 
-        if (v.latDriver && v.lngDriver) {
-          gpsContainer.innerHTML = `🛰️ Conductor en movimiento.`;
-          let origenDriver = `${v.latDriver},${v.lngDriver}`;
-          let destinoRecogida = `${v.latOrigen},${v.lngOrigen}`;
-          
-          actualizarMapaSiEsNecesario(`https://maps.google.com/maps?saddr=${origenDriver}&daddr=${destinoRecogida}&output=embed`, mapaIframe);
-        } else {
-          gpsContainer.innerHTML = `🛰️ Esperando señal GPS del conductor...`;
-          actualizarMapaSiEsNecesario(`https://maps.google.com/maps?q=${v.latOrigen},${v.lngOrigen}&z=16&output=embed`, mapaIframe);
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Firebase SDK (Módulos) -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyB5w7bXhTbBERcQ0TI6hRwOHA4gwXYV7yo",
+        authDomain: "peluche-dda78.firebaseapp.com",
+        projectId: "peluche-dda78",
+        storageBucket: "peluche-dda78.firebasestorage.app",
+        messagingSenderId: "673425111065",
+        appId: "1:673425111065:web:3f4c9e2ca6dfe10cdc1288"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const viajeId = urlParams.get('id') || urlParams.get('token'); // Soporta ambos parámetros (?id= o ?token=)
+
+    let map;
+    let markerOrigen = null;
+    let markerDriver = null;
+    let routeLine = null;
+    let usaIframeGoogle = false; // Estado del modo híbrido
+
+    window.onload = function() {
+        // Inicializar Leaflet centrado por defecto
+        map = L.map('map', { zoomControl: false }).setView([13.71053, -89.1847517], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+        if(!viajeId) {
+            mostrarPantallaBloqueada("Enlace No Válido", "Este enlace no contiene un identificador de viaje permitido.");
+            return;
         }
-      } 
-      else if (v.estado === 'FINALIZADO') {
-        statusPill.innerText = "● Finalizado";
-        statusPill.style.background = "#374151";
-        badgeEstado.innerText = "Viaje Completado";
-        tituloEstado.innerText = "¡Llegaste a tu destino!";
-        detallesConductor.innerText = "Gracias por viajar con Peluche.";
-        gpsContainer.innerHTML = "";
-      }
-    }, (error) => {
-      console.error("Error de permisos o conexión:", error);
-      document.getElementById('tituloEstado').innerText = "Acceso denegado o error de red";
-    });
-  }
 
-  // Función auxiliar que controla el tiempo de refresco del mapa (Iframe)
-  function actualizarMapaSiEsNecesario(nuevaUrl, iframeElement) {
-    let tiempoActual = Date.now();
-    let haPasadoTiempo = (tiempoActual - ultimaActualizacionMapa) > INTERVALO_MAPA_MS;
-    let cambioRuta = (ultimoUrlMapa !== nuevaUrl);
+        rastrearViajeFirebase(viajeId);
+    };
 
-    // Solo recarga el iframe si cambió la URL drásticamente (ej. de buscando a en curso) o si ya pasaron los 30 segundos
-    if (haPasadoTiempo || cambioRuta || iframeElement.src === "about:blank") {
-      iframeElement.src = nuevaUrl;
-      ultimaActualizacionMapa = tiempoActual;
-      ultimoUrlMapa = nuevaUrl;
+    // Función global para alternar visualmente entre Leaflet y Google Maps Iframe
+    window.alternarModoMapa = function() {
+        usaIframeGoogle = !usaIframeGoogle;
+        const iframeElem = document.getElementById('googleIframe');
+        const leafletElem = document.getElementById('map');
+        const btnElem = document.getElementById('toggleMapBtn');
+
+        if (usaIframeGoogle) {
+            leafletElem.style.display = 'none';
+            iframeElem.style.display = 'block';
+            btnElem.innerText = "⚡ Usar Mapa Fluido (Leaflet)";
+        } else {
+            iframeElem.style.display = 'none';
+            leafletElem.style.display = 'block';
+            btnElem.innerText = "🗺️ Usar Google Maps";
+            setTimeout(() => { map.invalidateSize(); }, 200);
+        }
     }
-  }
+
+    function mostrarPantallaBloqueada(titulo, mensaje) {
+        document.body.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#0f172a; color:white; text-align:center; padding:20px;">
+                  <h2 style="color:#ff00bf; margin-bottom:10px;">${titulo}</h2>
+                  <p style="color:#94a3b8; max-width:400px;">${mensaje}</p>
+            </div>`;
+    }
+
+    function rastrearViajeFirebase(id) {
+        const docRef = doc(db, "viajes", id);
+
+        onSnapshot(docRef, (docSnap) => {
+            if (!docSnap.exists()) {
+                mostrarPantallaBloqueada("🔒 Viaje No Encontrado", "El viaje ya no existe o el enlace ha expirado.");
+                return;
+            }
+
+            let v = docSnap.data();
+            actualizarInterfaz(v);
+        }, (error) => {
+            console.error("Error en Firestore:", error);
+            document.getElementById('tripStatus').innerText = "● Error de red";
+        });
+    }
+
+    function actualizarInterfaz(v) {
+        let badge = document.getElementById('statusBadge');
+        let statusPill = document.getElementById('tripStatus');
+
+        if (v.estado === "BUSCANDO") {
+            badge.className = "status-badge status-buscando";
+            badge.innerText = "Buscando conductor cercano...";
+            statusPill.innerText = "● Buscando";
+            statusPill.style.background = "#d97706";
+        } else if (v.estado === "EN_CURSO") {
+            badge.className = "status-badge status-en_curso";
+            badge.innerText = "¡Conductor en camino!";
+            statusPill.innerText = "● En Ruta";
+            statusPill.style.background = "#064e3b";
+            statusPill.style.color = "#34d399";
+        } else if (v.estado === "FINALIZADO") {
+            badge.className = "status-badge status-finalizado";
+            badge.innerText = "Viaje Completado";
+            statusPill.innerText = "● Finalizado";
+            statusPill.style.background = "#374151";
+        }
+
+        document.getElementById('infoDestino').innerText = "Destino: " + (v.destinoTexto || v.destino || "No especificado");
+        document.getElementById('infoTarifa').innerText = "Tarifa estimada: " + (v.tarifa ? "$" + v.tarifa : "--");
+
+        if (v.driverNombre) {
+            document.getElementById('driverName').innerText = v.driverNombre;
+            document.getElementById('driverPhone').innerText = "Tel: " + (v.driverTelefono || "N/A");
+            if (v.driverTelefono) {
+                let telLimpio = String(v.driverTelefono).replace(/\D/g, '');
+                document.getElementById('actionContainer').innerHTML = `<a href="https://wa.me/${telLimpio}" class="call-btn" target="_blank">💬 Chat Driver</a>`;
+            }
+        }
+
+        // Extraer coordenadas de origen (soporta latOrigen/lngOrigen o latOrigen separado)
+        let oLat = parseFloat(v.latOrigen || v.origenLat);
+        let oLng = parseFloat(v.lngOrigen || v.origenLng);
+
+        if (!isNaN(oLat) && !isNaN(oLng) && !markerOrigen) {
+            markerOrigen = L.marker([oLat, oLng], {
+                icon: L.divIcon({ className: 'origin-icon', html: '<div style="font-size: 22px; text-align: center;">📍</div>', iconSize: [30, 30] })
+            }).addTo(map).bindPopup("Tu punto de recogida");
+        }
+
+        // Extraer coordenadas del conductor (soporta latDriver/lngDriver o driverUbicacion en texto)
+        let cLat = parseFloat(v.latDriver);
+        let cLng = parseFloat(v.lngDriver);
+
+        if (isNaN(cLat) && v.driverUbicacion && typeof v.driverUbicacion === 'string') {
+            let parts = v.driverUbicacion.split(',');
+            if (parts.length === 2) {
+                cLat = parseFloat(parts[0]);
+                cLng = parseFloat(parts[1]);
+            }
+        }
+
+        if (!isNaN(cLat) && !isNaN(cLng)) {
+            if (usaIframeGoogle) {
+                const googleIframe = document.getElementById('googleIframe');
+                const origenDriver = `${cLat},${cLng}`;
+                const destinoRecogida = `${oLat},${oLng}`;
+                const nuevaUrlIframe = `https://maps.google.com/maps?saddr=${origenDriver}&daddr=${destinoRecogida}&output=embed`;
+                
+                if (googleIframe.src !== nuevaUrlIframe) {
+                    googleIframe.src = nuevaUrlIframe;
+                }
+            } else {
+                if (!markerDriver) {
+                    markerDriver = L.marker([cLat, cLng], {
+                        icon: L.divIcon({ className: 'driver-icon', html: '<div style="font-size: 28px; text-align: center;">🚗</div>', iconSize: [35, 35], iconAnchor: [17, 17] })
+                    }).addTo(map).bindPopup("Conductor: " + (v.driverNombre || "En camino"));
+                } else {
+                    markerDriver.setLatLng([cLat, cLng]);
+                }
+
+                // Trazar ruta dinámica con OSRM
+                fetch(`https://router.project-osrm.org/route/v1/driving/${cLng},${cLat};${oLng},${oLat}?overview=full&geometries=geojson`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.routes && data.routes.length > 0) {
+                            let coords = data.routes[0].geometry.coordinates;
+                            let latLngs = coords.map(c => [c[1], c[0]]);
+                            if (routeLine) map.removeLayer(routeLine);
+                            routeLine = L.polyline(latLngs, { color: '#22c55e', weight: 4, opacity: 0.8 }).addTo(map);
+                        }
+                    })
+                    .catch(err => console.log("Error OSRM"));
+
+                map.fitBounds([[oLat, oLng], [cLat, cLng]], { padding: [50, 50], maxZoom: 16 });
+            }
+        } else if (!isNaN(oLat) && !isNaN(oLng)) {
+            // Si aún no hay ubicación del conductor, centrar en el origen
+            if (usaIframeGoogle) {
+                document.getElementById('googleIframe').src = `https://maps.google.com/maps?q=${oLat},${oLng}&z=15&output=embed`;
+            } else {
+                map.setView([oLat, oLng], 15);
+            }
+        }
+    }
 </script>
+
 </body>
 </html>
