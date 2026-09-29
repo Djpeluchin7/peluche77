@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Peluche - Seguimiento de Trayecto en Vivo</title>
+<title>Peluche Tracking</title>
 <style>
 :root {
     --bg-main: #111827;
@@ -47,7 +47,7 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
 <body>
 
 <header>
-  <h1>Peluche <span style="font-weight:300; opacity:0.8;">En Vivo</span></h1>
+  <h1>Peluche <span style="font-weight:300; opacity:0.8;">Tracking</span></h1>
   <div id="tripStatus" class="status-pill">● Conectando...</div>
 </header>
 
@@ -84,6 +84,11 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
   const urlParams = new URLSearchParams(window.location.search);
   let viajeId = urlParams.get('id');
 
+  // Variables de control para evitar recargas excesivas del mapa
+  let ultimaActualizacionMapa = 0;
+  let ultimoUrlMapa = "";
+  const INTERVALO_MAPA_MS = 30000; // 30 segundos entre recargas forzadas del mapa
+
   if (!viajeId) {
     document.getElementById('tituloEstado').innerText = "Enlace inválido";
     document.getElementById('detallesConductor').innerText = "No se encontró el ID de seguimiento en la URL.";
@@ -95,7 +100,6 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
   function rastrearTrayectoConductor(id) {
     const docRef = doc(db, "viajes", id);
     
-    // Escucha en tiempo real optimizada exclusivamente para este viaje
     onSnapshot(docRef, (docSnap) => {
       if (!docSnap.exists()) {
         document.getElementById('tituloEstado').innerText = "Viaje no encontrado o expirado";
@@ -111,6 +115,7 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
       let gpsContainer = document.getElementById('gpsContainer');
       let mapaIframe = document.getElementById('mapaIframe');
 
+      // 1. Actualización inmediata de textos y estados visuales (Cero parpadeos en la interfaz)
       if (v.estado === 'BUSCANDO') {
         statusPill.innerText = "● Buscando";
         statusPill.style.background = "#d97706";
@@ -118,7 +123,8 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
         tituloEstado.innerText = "Buscando unidad cercana...";
         detallesConductor.innerText = `Punto de recogida: ${v.origenTexto}`;
         gpsContainer.innerHTML = "";
-        mapaIframe.src = `https://maps.google.com/maps?q=${v.latOrigen || '19.4326'},${v.lngOrigen || '-99.1332'}&z=15&output=embed`;
+        
+        actualizarMapaSiEsNecesario(`https://maps.google.com/maps?q=${v.latOrigen || '19.4326'},${v.lngOrigen || '-99.1332'}&z=15&output=embed`, mapaIframe);
       } 
       else if (v.estado === 'EN_CURSO') {
         statusPill.innerText = "● En Ruta";
@@ -129,13 +135,14 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
         detallesConductor.innerHTML = `📞 Teléfono: ${v.driverTelefono || 'Disponible en breve'}`;
 
         if (v.latDriver && v.lngDriver) {
-          gpsContainer.innerHTML = `🛰️ Actualizando posición del conductor en tiempo real...`;
+          gpsContainer.innerHTML = `🛰️ Conductor en movimiento.`;
           let origenDriver = `${v.latDriver},${v.lngDriver}`;
           let destinoRecogida = `${v.latOrigen},${v.lngOrigen}`;
-          mapaIframe.src = `https://maps.google.com/maps?saddr=${origenDriver}&daddr=${destinoRecogida}&output=embed`;
+          
+          actualizarMapaSiEsNecesario(`https://maps.google.com/maps?saddr=${origenDriver}&daddr=${destinoRecogida}&output=embed`, mapaIframe);
         } else {
           gpsContainer.innerHTML = `🛰️ Esperando señal GPS del conductor...`;
-          mapaIframe.src = `https://maps.google.com/maps?q=${v.latOrigen},${v.lngOrigen}&z=16&output=embed`;
+          actualizarMapaSiEsNecesario(`https://maps.google.com/maps?q=${v.latOrigen},${v.lngOrigen}&z=16&output=embed`, mapaIframe);
         }
       } 
       else if (v.estado === 'FINALIZADO') {
@@ -150,6 +157,20 @@ h1 { margin: 0; font-size: 18px; font-weight: 700; }
       console.error("Error de permisos o conexión:", error);
       document.getElementById('tituloEstado').innerText = "Acceso denegado o error de red";
     });
+  }
+
+  // Función auxiliar que controla el tiempo de refresco del mapa (Iframe)
+  function actualizarMapaSiEsNecesario(nuevaUrl, iframeElement) {
+    let tiempoActual = Date.now();
+    let haPasadoTiempo = (tiempoActual - ultimaActualizacionMapa) > INTERVALO_MAPA_MS;
+    let cambioRuta = (ultimoUrlMapa !== nuevaUrl);
+
+    // Solo recarga el iframe si cambió la URL drásticamente (ej. de buscando a en curso) o si ya pasaron los 30 segundos
+    if (haPasadoTiempo || cambioRuta || iframeElement.src === "about:blank") {
+      iframeElement.src = nuevaUrl;
+      ultimaActualizacionMapa = tiempoActual;
+      ultimoUrlMapa = nuevaUrl;
+    }
   }
 </script>
 </body>
