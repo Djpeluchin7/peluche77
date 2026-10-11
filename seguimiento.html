@@ -10,10 +10,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background: #0f172a; color: #f8fafc; }
-        header { background: #1e293b; color: white; padding: 16px; text-align: center; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; px: 20px; }
+        header { background: #1e293b; color: white; padding: 16px; text-align: center; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
         header h1 { margin: 0; font-size: 18px; color: #ffffff; font-weight: bold; }
         
-        /* Contenedor del mapa dinámico (Leaflet fluido + Iframe opcional) */
+        /* Contenedor del mapa dinámico */
         #mapContainer { height: calc(100vh - 230px); width: 100%; position: relative; background: #0f172a; }
         #map { height: 100%; width: 100%; z-index: 1; }
         #googleIframe { height: 100%; width: 100%; border: 0; display: none; position: absolute; top: 0; left: 0; z-index: 2; }
@@ -30,7 +30,6 @@
         .call-btn { background: #22c55e; color: white; padding: 8px 14px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 12px; transition: background 0.2s; }
         .call-btn:hover { background: #16a34a; }
 
-        /* Botón flotante para alternar entre Leaflet y Google Maps Iframe */
         .map-toggle-btn { position: absolute; top: 15px; right: 15px; z-index: 1000; background: rgba(30, 41, 59, 0.9); color: #cbd5e1; border: 1px solid #475569; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; backdrop-filter: blur(4px); }
         .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #374151; color: #e5e7eb; }
     </style>
@@ -44,13 +43,8 @@
 
 <!-- Contenedor del Mapa con opción Híbrida -->
 <div id="mapContainer">
-    <!-- Botón para cambiar dinámicamente al Iframe de Google Maps -->
     <button onclick="alternarModoMapa()" id="toggleMapBtn" class="map-toggle-btn">🗺️ Usar Google Maps</button>
-    
-    <!-- Mapa Leaflet principal (Fluido) -->
     <div id="map"></div>
-    
-    <!-- Iframe de Google Maps alternativo -->
     <iframe id="googleIframe" allowfullscreen="" loading="lazy"></iframe>
 </div>
 
@@ -89,16 +83,15 @@
     const db = getFirestore(app);
 
     const urlParams = new URLSearchParams(window.location.search);
-    const viajeId = urlParams.get('id') || urlParams.get('token'); // Soporta ambos parámetros (?id= o ?token=)
+    const viajeId = urlParams.get('id') || urlParams.get('token');
 
     let map;
     let markerOrigen = null;
     let markerDriver = null;
     let routeLine = null;
-    let usaIframeGoogle = false; // Estado del modo híbrido
+    let usaIframeGoogle = false;
 
     window.onload = function() {
-        // Inicializar Leaflet centrado por defecto
         map = L.map('map', { zoomControl: false }).setView([13.71053, -89.1847517], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
@@ -110,7 +103,6 @@
         rastrearViajeFirebase(viajeId);
     };
 
-    // Función global para alternar visualmente entre Leaflet y Google Maps Iframe
     window.alternarModoMapa = function() {
         usaIframeGoogle = !usaIframeGoogle;
         const iframeElem = document.getElementById('googleIframe');
@@ -132,8 +124,8 @@
     function mostrarPantallaBloqueada(titulo, mensaje) {
         document.body.innerHTML = `
             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#0f172a; color:white; text-align:center; padding:20px;">
-                  <h2 style="color:#ff00bf; margin-bottom:10px;">${titulo}</h2>
-                  <p style="color:#94a3b8; max-width:400px;">${mensaje}</p>
+                <h2 style="color:#ffffff; font-size: 24px; margin-bottom:10px;">${titulo}</h2>
+                <p style="color:#94a3b8; max-width:400px; font-size: 15px; line-height: 1.5;">${mensaje}</p>
             </div>`;
     }
 
@@ -142,11 +134,18 @@
 
         onSnapshot(docRef, (docSnap) => {
             if (!docSnap.exists()) {
-                mostrarPantallaBloqueada("🔒 Viaje No Encontrado", "El viaje ya no existe o el enlace ha expirado.");
+                mostrarPantallaBloqueada("🔒 Enlace Expirado", "Este enlace temporal expiró porque el viaje ya no existe.");
                 return;
             }
 
             let v = docSnap.data();
+
+            // Validación de viaje finalizado para mostrar la pantalla solicitada
+            if (v.estado === "FINALIZADO") {
+                mostrarPantallaBloqueada("🔒<br><br>Enlace Expirado", "Este enlace temporal expiró porque el viaje ha finalizado.");
+                return;
+            }
+
             actualizarInterfaz(v);
         }, (error) => {
             console.error("Error en Firestore:", error);
@@ -169,11 +168,6 @@
             statusPill.innerText = "● En Ruta";
             statusPill.style.background = "#064e3b";
             statusPill.style.color = "#34d399";
-        } else if (v.estado === "FINALIZADO") {
-            badge.className = "status-badge status-finalizado";
-            badge.innerText = "Viaje Completado";
-            statusPill.innerText = "● Finalizado";
-            statusPill.style.background = "#374151";
         }
 
         document.getElementById('infoDestino').innerText = "Destino: " + (v.destinoTexto || v.destino || "No especificado");
@@ -188,7 +182,6 @@
             }
         }
 
-        // Extraer coordenadas de origen (soporta latOrigen/lngOrigen o latOrigen separado)
         let oLat = parseFloat(v.latOrigen || v.origenLat);
         let oLng = parseFloat(v.lngOrigen || v.origenLng);
 
@@ -198,17 +191,8 @@
             }).addTo(map).bindPopup("Tu punto de recogida");
         }
 
-        // Extraer coordenadas del conductor (soporta latDriver/lngDriver o driverUbicacion en texto)
         let cLat = parseFloat(v.latDriver);
         let cLng = parseFloat(v.lngDriver);
-
-        if (isNaN(cLat) && v.driverUbicacion && typeof v.driverUbicacion === 'string') {
-            let parts = v.driverUbicacion.split(',');
-            if (parts.length === 2) {
-                cLat = parseFloat(parts[0]);
-                cLng = parseFloat(parts[1]);
-            }
-        }
 
         if (!isNaN(cLat) && !isNaN(cLng)) {
             if (usaIframeGoogle) {
@@ -229,7 +213,6 @@
                     markerDriver.setLatLng([cLat, cLng]);
                 }
 
-                // Trazar ruta dinámica con OSRM
                 fetch(`https://router.project-osrm.org/route/v1/driving/${cLng},${cLat};${oLng},${oLat}?overview=full&geometries=geojson`)
                     .then(response => response.json())
                     .then(data => {
@@ -245,7 +228,6 @@
                 map.fitBounds([[oLat, oLng], [cLat, cLng]], { padding: [50, 50], maxZoom: 16 });
             }
         } else if (!isNaN(oLat) && !isNaN(oLng)) {
-            // Si aún no hay ubicación del conductor, centrar en el origen
             if (usaIframeGoogle) {
                 document.getElementById('googleIframe').src = `https://maps.google.com/maps?q=${oLat},${oLng}&z=15&output=embed`;
             } else {
